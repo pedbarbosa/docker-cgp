@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Image tests, run by docker-image-refresh after building a new image and
+# before tagging it 'latest'. Usage: ./test <image>
+
+# The check functions are called indirectly, through 'check'
+# shellcheck disable=SC2329
+
+set -euo pipefail
+
+if [ $# -ne 1 ]; then
+    echo "Usage: $0 <image>" >&2
+    exit 2
+fi
+IMAGE=$1
+
+FAILED=0
+CONTAINER="cgp-test-$$"
+RRD_DIR=/var/lib/collectd/rrd/testhost/load
+
+cleanup() {
+    docker rm --force "$CONTAINER" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+check() {
+    local name=$1 output
+    shift
+    if output=$("$@" 2>&1); then
+        echo "PASS: $name"
+    else
+        echo "FAIL: $name"
+        [ -z "$output" ] || echo "    ${output//$'\n'/$'\n'    }"
+        FAILED=1
+    fi
+}
+
+in_container() {
+    docker exec "$CONTAINER" "$@"
+}
+
+# Starts the image as it ships, with its default entrypoint, for the checks
+# that need it running
+starts() {
+    docker run --detach --name "$CONTAINER" "$IMAGE" >/dev/null
+}
+
+serves_index() {
+    local page
+    for _ in {1..15}; do
+        if page=$(in_container curl -fsS http://localhost/ 2>/dev/null); then
+            grep -q '<title>CGP' <<<"$page" && return 0
+            echo "$page" | head -20
+            return 1
+        fi
+        sleep 2
+    done
+    docker logs --tail 20 "$CONTAINER"
+    return 1
+}
+
+no_php_errors() {
+    local page
+    page=$(in_container curl -fsS http://localhost/) || return 1
+    ! grep -iE 'fatal error|warning:|deprecated:|notice:' <<<"$page"
+}
+
+# An empty collectd load database, which CGP should then list and graph
+creates_rrd() {
+    in_container sh -c "mkdir -p $RRD_DIR && rrdtool create $RRD_DIR/load.rrd --step 10 \
+        DS:shortterm:GAUGE:20:0:U DS:midterm:GAUGE:20:0:U DS:longterm:GAUGE:20:0:U RRA:AVERAGE:0.5:1:100"
+}
+
+lists_collectd_host() {
+    local page
+    page=$(in_container curl -fsS http://localhost/) || return 1
+    grep -q 'testhost' <<<"$page"
+}
+
+draws_graph() {
+    local type
+    type=$(in_container curl -fsS -o /dev/null -w '%{content_type}' \
+        'http://localhost/graph.php?h=testhost&p=load&t=load') || return 1
+    [ "$type" = "image/png" ] || { echo "Content type: $type"; return 1; }
+}
+
+# Fails when Debian's repositories can't be reached, as well as when
+# packages are out of date
+packages_up_to_date() {
+    local output
+    output=$(docker run --rm --user root --entrypoint sh "$IMAGE" -c \
+        'apt-get update -qq --error-on=any && apt-get -s -q --with-new-pkgs upgrade' 2>&1) \
+        || { echo "$output"; return 1; }
+    ! grep '^Inst ' <<<"$output"
+}
+
+echo "Testing '$IMAGE' ..."
+check "container starts" starts
+check "serves the CGP index" serves_index
+check "index has no PHP errors" no_php_errors
+check "rrdtool creates a collectd database" creates_rrd
+check "lists a host from collectd data" lists_collectd_host
+check "draws a graph from collectd data" draws_graph
+check "Debian packages are up to date" packages_up_to_date
+
+exit $FAILED
