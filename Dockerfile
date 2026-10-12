@@ -10,6 +10,7 @@ RUN \
     a2enmod rewrite && \
     echo "**** pull CGP from git ****" && \
     git clone https://github.com/pedbarbosa/CGP.git /usr/src/CGP && \
+    git -C /usr/src/CGP rev-parse HEAD >/usr/src/CGP.revision && \
     rm -rf /usr/src/CGP/.git /var/www/html && \
     ln -s /usr/src/CGP /var/www/html && \
     echo "**** clean up ****" && \
