@@ -83,6 +83,11 @@ draws_graph() {
     [ "$type" = "image/png" ] || { echo "Content type: $type"; return 1; }
 }
 
+# The publish workflow compares it with CGP's latest commit
+records_cgp_revision() {
+    in_container cat /usr/src/CGP.revision | grep -xE '[0-9a-f]{40}'
+}
+
 # Fails when Debian's repositories can't be reached, as well as when
 # packages are out of date
 packages_up_to_date() {
@@ -100,6 +105,7 @@ check "index has no PHP errors" no_php_errors
 check "rrdtool creates a collectd database" creates_rrd
 check "lists a host from collectd data" lists_collectd_host
 check "draws a graph from collectd data" draws_graph
+check "records the CGP revision" records_cgp_revision
 check "Debian packages are up to date" packages_up_to_date
 
 exit $FAILED
