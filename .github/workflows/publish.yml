@@ -4,8 +4,8 @@ name: Publish image
 # here or in CGP, a new base image, or Debian package updates
 on:
   schedule:
-    # Daily at 04:23 in Brisbane, staggered with the other docker-* repos to publish by 05:00
-    - cron: "23 4 * * *"
+    # Daily at 00:03 in Brisbane
+    - cron: "03 0 * * *"
       timezone: "Australia/Brisbane"
   workflow_dispatch:
     inputs:
