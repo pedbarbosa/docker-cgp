@@ -1,0 +1,56 @@
+name: Publish dev image
+
+# Builds the image from a CGP branch, tests it and publishes it as
+# 'pedbarbosa/cgp:dev', to try out CGP changes before they reach 'latest'.
+# Only run by hand, and it never touches 'latest' or the dated tags.
+on:
+  workflow_dispatch:
+    inputs:
+      cgp_branch:
+        description: CGP branch to build from
+        type: string
+        default: dev
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  IMAGE: pedbarbosa/cgp:dev
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/login-action@v4
+        with:
+          username: pedbarbosa
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build the image
+        env:
+          CGP_BRANCH: ${{ inputs.cgp_branch }}
+        run: |
+          docker build --pull --no-cache \
+            --build-arg CGP_BRANCH="$CGP_BRANCH" \
+            --label org.opencontainers.image.created="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --label org.opencontainers.image.revision="$GITHUB_SHA" \
+            --label org.opencontainers.image.source="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label org.opencontainers.image.version=dev \
+            --tag "$IMAGE" .
+          cgp_revision=$(docker run --rm --entrypoint cat "$IMAGE" /usr/src/CGP.revision)
+          echo "Built '$IMAGE' from CGP '$CGP_BRANCH' at ${cgp_revision:0:7}." | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Test the image
+        run: ./test "$IMAGE"
+
+      - name: Publish the image
+        run: docker push "$IMAGE"

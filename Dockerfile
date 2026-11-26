@@ -1,6 +1,10 @@
 FROM php:apache
 LABEL org.opencontainers.image.authors="Pedro Barbosa, https://github.com/pedbarbosa"
 
+# CGP branch to build from, e.g. 'dev' for the dev image; empty for CGP's
+# default branch, which 'latest' is built from
+ARG CGP_BRANCH=
+
 RUN \
     echo "**** update and upgrade packages ****" && \
     apt update && apt upgrade -y && \
@@ -10,6 +14,7 @@ RUN \
     a2enmod rewrite && \
     echo "**** pull CGP from git ****" && \
     git clone https://github.com/pedbarbosa/CGP.git /usr/src/CGP && \
+    { [ -z "$CGP_BRANCH" ] || git -C /usr/src/CGP checkout "$CGP_BRANCH"; } && \
     git -C /usr/src/CGP rev-parse HEAD >/usr/src/CGP.revision && \
     rm -rf /usr/src/CGP/.git /var/www/html && \
     ln -s /usr/src/CGP /var/www/html && \
