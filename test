@@ -83,6 +83,26 @@ draws_graph() {
     [ "$type" = "image/png" ] || { echo "Content type: $type"; return 1; }
 }
 
+# rrdtool warns about fontconfig on every graph when the font cache is stale
+# and www-data can't write a new one
+no_fontconfig_errors() {
+    in_container su -s /bin/sh www-data -c \
+        "rrdtool graph /tmp/fontconfig.png DEF:a=$RRD_DIR/load.rrd:shortterm:AVERAGE LINE1:a#ff0000 2>&1 >/dev/null" \
+        | { ! grep -i fontconfig; }
+}
+
+# A disk_io_time database, whose data sources CGP must take from collectd's
+# types.db rather than falling back to 'value'
+draws_disk_io_time_graph() {
+    local dir=/var/lib/collectd/rrd/testhost/disk-sda type
+    in_container sh -c "mkdir -p $dir && rrdtool create $dir/disk_io_time.rrd --step 10 \
+        DS:io_time:DERIVE:20:0:U DS:weighted_io_time:DERIVE:20:0:U RRA:AVERAGE:0.5:1:100" || return 1
+    type=$(in_container curl -fsS -o /dev/null -w '%{content_type}' \
+        'http://localhost/graph.php?h=testhost&p=disk&pi=sda&t=disk_io_time') || return 1
+    [ "$type" = "image/png" ] || { echo "Content type: $type"; return 1; }
+    ! docker logs "$CONTAINER" 2>&1 | grep 'CGP: rrdtool exited'
+}
+
 # The publish workflow compares it with CGP's latest commit
 records_cgp_revision() {
     in_container cat /usr/src/CGP.revision | grep -xE '[0-9a-f]{40}'
@@ -105,6 +125,8 @@ check "index has no PHP errors" no_php_errors
 check "rrdtool creates a collectd database" creates_rrd
 check "lists a host from collectd data" lists_collectd_host
 check "draws a graph from collectd data" draws_graph
+check "rrdtool has no fontconfig errors" no_fontconfig_errors
+check "draws a disk_io_time graph" draws_disk_io_time_graph
 check "records the CGP revision" records_cgp_revision
 check "Debian packages are up to date" packages_up_to_date
 

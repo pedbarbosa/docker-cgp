@@ -20,7 +20,9 @@ RUN \
     rm -rf /usr/share/doc/* && \
     rm -rf /usr/share/info/* && \
     rm -rf /var/lib/{apt,cache,dpkg,log}/ && \
-    rm -rf /var/tmp/*
+    rm -rf /var/tmp/* && \
+    echo "**** let rrdtool, running as www-data, refresh the font cache ****" && \
+    chown -R www-data:www-data /var/cache/fontconfig
 
 COPY src/entrypoint.sh /entrypoint.sh
 
