@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CGP{% for c in crumbs %} - {{ c }}{% endfor %}</title>
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/cgp.css">
+  {% if config.graph_type == "interactive" %}
+  <link rel="stylesheet" href="/static/vendor/uPlot.min.css">
+  <script src="/static/vendor/uPlot.iife.min.js" defer></script>
+  {% endif %}
+  <script src="/static/cgp.js" defer></script>
+  <script src="/static/theme.js"></script>
+</head>
+<body data-graph-type="{{ config.graph_type }}">
+<header class="topbar">
+  <a class="brand" href="/">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 20h18M5 16l4-6 4 3 6-8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Collectd Graph Panel</span>
+  </a>
+  <nav class="crumbs" aria-label="Breadcrumbs">
+    {% block crumbs %}{% endblock %}
+  </nav>
+  <div class="actions">
+    <label class="toggle" title="Reload graphs every minute">
+      <input type="checkbox" id="live"> <span>Live</span>
+    </label>
+    <button type="button" id="theme" class="icon-button" title="Theme: auto" aria-label="Switch theme">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7a5 5 0 0 1 0 10z" fill="currentColor"/></svg>
+    </button>
+  </div>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+<footer class="footer">
+  <a href="https://github.com/pedbarbosa/docker-cgp" rel="external">Collectd Graph Panel</a>
+  (<span title="{{ revision }}">{{ short_revision }}</span>) is distributed under the
+  <a href="/LICENSE" rel="license">GNU General Public License (GPLv3)</a>
+</footer>
+</body>
+</html>

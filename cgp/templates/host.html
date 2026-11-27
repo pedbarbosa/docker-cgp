@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "macros.html" import graph_card, time_ranges, host_crumbs, plugin_nav with context %}
+{% block crumbs %}{{ host_crumbs(host, plugin) }}{% endblock %}
+{% block content %}
+<div class="layout">
+  {{ plugin_nav(host, nav, plugin, overview, seconds) }}
+  <div class="graphs-area">
+    <div class="toolbar">
+      {{ time_ranges(terms, selected, request.path ~ "?s=") }}
+      <input type="search" id="filter" placeholder="Filter graphs" aria-label="Filter graphs" autocomplete="off">
+    </div>
+    {% for section in sections %}
+    <section class="plugin" id="{{ section.plugin }}">
+      <h2><a href="/host/{{ host|urlencode }}/{{ section.plugin }}{% if seconds %}?s={{ seconds }}{% endif %}">{{ section.plugin }}</a></h2>
+      <div class="graphs">
+        {% for g in section.graphs %}{{ graph_card(g) }}{% endfor %}
+      </div>
+    </section>
+    {% else %}
+    <p class="notice">None of the overview's plugins ({{ config.overview|join(", ") }}) have data on this host. Pick a plugin from the list.</p>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

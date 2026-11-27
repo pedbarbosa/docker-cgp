@@ -1,0 +1,34 @@
+{
+	"smart_temperature": {
+		"title": "Disk temperature on {{HOST}}",
+		"vertical": "°C",
+		"merge_instances": true,
+		"legend_format": "%5.1lf"
+	},
+	"smart_poweron": {
+		"title": "Disk power-on time on {{HOST}}",
+		"vertical": "Days",
+		"merge_instances": true,
+		"scale": 0.0000115740740741,
+		"legend_format": "%7.1lf"
+	},
+	"smart_powercycles": {
+		"title": "Disk power cycles on {{HOST}}",
+		"vertical": "Power cycles",
+		"merge_instances": true,
+		"legend_format": "%7.0lf"
+	},
+	"smart_badsectors": {
+		"title": "Disk bad sectors on {{HOST}}",
+		"vertical": "Sectors",
+		"merge_instances": true,
+		"legend_format": "%5.0lf"
+	},
+	"smart_attribute": {
+		"title": "SMART {{TI}} on {{HOST}}",
+		"vertical": "Raw value",
+		"merge_instances": true,
+		"data_sources": ["pretty"],
+		"legend_format": "%5.1lf%s"
+	}
+}

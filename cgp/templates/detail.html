@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "macros.html" import time_ranges, host_crumbs, plugin_nav with context %}
+{% block crumbs %}{{ host_crumbs(host, plugin, title) }}{% endblock %}
+{% block content %}
+<div class="layout">
+  {{ plugin_nav(host, nav, plugin, false, seconds) }}
+  <div class="graphs-area">
+    <div class="toolbar">
+      {{ time_ranges(terms, selected, request.path ~ "?" ~ query(range_base) ~ "&s=") }}
+      {% if config.graph_type == "interactive" %}
+      <div class="segmented" role="group" aria-label="Move">
+        <button type="button" data-move="-0.5" title="Earlier">&larr;</button>
+        <button type="button" data-zoom="2" title="Zoom out">&minus;</button>
+        <button type="button" data-reset title="Back to the time range">Reset</button>
+        <button type="button" data-move="0.5" title="Later">&rarr;</button>
+      </div>
+      {% endif %}
+      <span class="links">
+        <a href="/graph.png?{{ query_ }}&amp;x={{ config.detail_width }}&amp;y={{ config.detail_height }}" download>PNG</a>
+        <a href="/graph.svg?{{ query_ }}&amp;x={{ config.detail_width }}&amp;y={{ config.detail_height }}" download>SVG</a>
+      </span>
+    </div>
+    <figure class="card graph big">
+      <figcaption><span class="title">{{ title }}</span></figcaption>
+      {% if config.graph_type == "interactive" %}
+      <div class="chart" data-src="/api/graph?{{ query_ }}" data-big
+           {% if start and end %}data-start="{{ start }}" data-end="{{ end }}"{% endif %}>
+        <div class="plot" style="height: {{ config.detail_height }}px"><div class="loading" aria-hidden="true"></div></div>
+      </div>
+      <p class="hint">Drag across the graph to zoom in, double-click to go back. Click a legend row to hide that line.</p>
+      {% else %}
+      <img src="/graph.{{ config.graph_type }}?{{ query_ }}&amp;x={{ config.detail_width }}&amp;y={{ config.detail_height }}" alt="{{ title }}">
+      {% endif %}
+    </figure>
+  </div>
+</div>
+{% endblock %}

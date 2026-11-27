@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools >= 80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cgp"
+version = "0.1.0"
+description = "Collectd Graph Panel: graphs of collectd's RRD files"
+license = "GPL-3.0-only"
+requires-python = ">=3.12"
+dependencies = [
+    "flask >= 3.1",
+    "gunicorn >= 23.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest >= 8.0"]
+
+[tool.setuptools]
+packages = ["cgp"]
+
+[tool.setuptools.package-data]
+cgp = ["data/**/*", "static/**/*", "templates/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

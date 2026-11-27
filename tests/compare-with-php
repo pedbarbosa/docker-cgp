@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Compares the Python CGP with the PHP CGP over the same made-up collectd
+# data: the same hosts, plugins and graphs on every page, and the same
+# rrdtool arguments for every graph. See tests/parity.py.
+#
+# Usage: tests/compare-with-php <python image> [php image, default pedbarbosa/cgp:dev]
+
+set -euo pipefail
+
+if [ $# -lt 1 ]; then
+    echo "Usage: $0 <python image> [php image]" >&2
+    exit 2
+fi
+PY_IMAGE=$1
+PHP_IMAGE=${2:-pedbarbosa/cgp:dev}
+PY="cgp-compare-py-$$"
+PHP="cgp-compare-php-$$"
+cd "$(dirname "$0")/.."
+
+cleanup() {
+    docker rm --force "$PY" "$PHP" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+docker run --detach --name "$PY" "$PY_IMAGE" >/dev/null
+docker run --detach --name "$PHP" "$PHP_IMAGE" >/dev/null
+
+echo "Making collectd data in '$PY_IMAGE' ..."
+tar c tests/make_rrd_tree.py | docker exec -i --user root "$PY" tar x -C /tmp
+docker exec --user root "$PY" sh -c \
+    'mkdir -p /var/lib/collectd/rrd && python /tmp/tests/make_rrd_tree.py /var/lib/collectd/rrd'
+docker cp "$PY:/var/lib/collectd/rrd" - | docker exec -i "$PHP" sh -c 'mkdir -p /var/lib/collectd && tar x -C /var/lib/collectd'
+
+# The PHP CGP with the Python one's defaults where they differ, and a
+# cmd.php that prints graph.php's rrdtool arguments instead of drawing them
+docker exec -i "$PHP" sh -c 'cat > /usr/src/CGP/conf/config.local.php' <<'PHP'
+<?php
+$CONFIG['showmem'] = true;
+PHP
+docker exec "$PHP" sh -c 'cd /usr/src/CGP && sed "s/^\$obj->rrd_graph();\$/\$c = \$obj->colors; \$obj->rainbow_colors(); \$obj->colors = \$c + \$obj->colors; header(\"Content-Type: application\/json\"); echo json_encode(\$obj->rrd_gen_graph());/" graph.php > cmd.php'
+echo "Comparing with '$PHP_IMAGE' (CGP $(docker exec "$PHP" cat /usr/src/CGP.revision | cut -c1-7)) ..."
+sleep 3
+
+python3 tests/parity.py "$PHP" "$PY"

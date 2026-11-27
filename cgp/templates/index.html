@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block crumbs %}<span>Hosts</span>{% endblock %}
+{% block content %}
+<div class="page">
+{% if no_hosts %}
+<p class="notice crit">No collectd hosts found in <code>{{ config.datadir }}</code>.</p>
+{% endif %}
+{% for name, hosts in groups %}
+<section class="category">
+  <h1>{{ name }}</h1>
+  <div class="hosts">
+  {% for h in hosts %}
+    <a class="card host" href="/host/{{ h.host|urlencode }}">
+      <span class="name">{{ h.host }}</span>
+      <span class="metrics">
+      {% if config.showload and h.load %}
+        <span class="metric" title="Load average over 1, 5 and 15 minutes{% if h.cores %} ({{ h.cores }} CPUs){% endif %}">
+          <span class="label">Load</span>
+          {% for l in h.load %}<span class="value {{ l.level }}">{{ "%.2f"|format(l.value) if l.value is not none else "–" }}</span>{% endfor %}
+        </span>
+      {% endif %}
+      {% if config.showmem and h.mem %}
+        <span class="metric" title="Memory used">
+          <span class="label">Memory</span>
+          <span class="value {{ h.mem.level }}">{{ h.mem.value }}%</span>
+          <span class="bar"><span class="{{ h.mem.level }}" style="width: {{ h.mem.value }}%"></span></span>
+        </span>
+      {% endif %}
+      {% if config.showtime and h.updated %}
+        <span class="metric" title="Last update">
+          <span class="label">Updated</span>
+          <time class="ago {{ h.updated.level }}" datetime="{{ h.updated.iso }}" data-epoch="{{ h.updated.epoch }}">{{ h.updated.age }} seconds ago</time>
+        </span>
+      {% endif %}
+      </span>
+    </a>
+  {% endfor %}
+  </div>
+</section>
+{% endfor %}
+</div>
+{% endblock %}

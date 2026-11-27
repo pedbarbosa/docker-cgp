@@ -1,0 +1,45 @@
+{% macro graph_card(g, big=false) -%}
+<figure class="card graph{% if big %} big{% endif %}" data-title="{{ g.title|lower }}">
+  <figcaption>
+    <a class="title" href="{{ g.detail }}">{{ g.title }}</a>
+    <span class="links">
+      <a href="/graph.png?{{ g.query }}" title="rrdtool PNG" download>PNG</a>
+    </span>
+  </figcaption>
+  {% if config.graph_type == "interactive" %}
+  <div class="chart" data-src="/api/graph?{{ g.query }}" data-detail="{{ g.detail }}">
+    <div class="plot" style="height: {{ config.height }}px"><div class="loading" aria-hidden="true"></div></div>
+  </div>
+  {% else %}
+  <a class="image" href="{{ g.detail }}"><img src="/graph.{{ config.graph_type }}?{{ g.query }}" alt="{{ g.title }}" loading="lazy"></a>
+  {% endif %}
+</figure>
+{%- endmacro %}
+
+{% macro time_ranges(terms, selected, base_url) -%}
+<div class="segmented" role="group" aria-label="Time range">
+  {% for name, s in terms %}
+  <a href="{{ base_url }}{{ s }}" {% if s == selected %}class="selected" aria-current="true"{% endif %}>{{ name }}</a>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro host_crumbs(host, plugin=None, extra=None) -%}
+<a href="/">Hosts</a>
+<span class="sep">/</span><a href="/host/{{ host|urlencode }}">{{ host }}</a>
+{% if plugin %}<span class="sep">/</span><a href="/host/{{ host|urlencode }}/{{ plugin }}">{{ plugin }}</a>{% endif %}
+{% if extra %}<span class="sep">/</span><span>{{ extra }}</span>{% endif %}
+{%- endmacro %}
+
+{% macro plugin_nav(host, nav, plugin, overview, seconds) -%}
+{% set s = ("?s=" ~ seconds) if seconds else "" %}
+<nav class="plugins" aria-label="Plugins">
+  <h2>Plugins</h2>
+  <ul>
+    <li class="overview"><a href="/host/{{ host|urlencode }}{{ s }}" {% if overview %}class="selected" aria-current="page"{% endif %}>overview</a></li>
+    {% for p in nav %}
+    <li><a href="/host/{{ host|urlencode }}/{{ p }}{{ s }}" {% if p == plugin %}class="selected" aria-current="page"{% endif %}>{{ p }}</a></li>
+    {% endfor %}
+  </ul>
+</nav>
+{%- endmacro %}

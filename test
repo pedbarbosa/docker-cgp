@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Image tests, run by docker-image-refresh after building a new image and
-# before tagging it 'latest'. Usage: ./test <image>
+# Image tests, run before publishing an image (by the publish workflow, or
+# docker-image-refresh). Usage: ./test <image>
 
 # The check functions are called indirectly, through 'check'
 # shellcheck disable=SC2329
@@ -38,6 +38,11 @@ in_container() {
     docker exec "$CONTAINER" "$@"
 }
 
+# collectd's files are written by collectd, not CGP's user
+as_root() {
+    docker exec --user root "$CONTAINER" "$@"
+}
+
 # Starts the image as it ships, with its default entrypoint, for the checks
 # that need it running
 starts() {
@@ -58,36 +63,62 @@ serves_index() {
     return 1
 }
 
-no_php_errors() {
-    local page
-    page=$(in_container curl -fsS http://localhost/) || return 1
-    ! grep -iE 'fatal error|warning:|deprecated:|notice:' <<<"$page"
+runs_unprivileged() {
+    local uid
+    uid=$(in_container id -u)
+    [ "$uid" != 0 ] || { echo "Runs as root"; return 1; }
+}
+
+no_app_errors() {
+    ! docker logs "$CONTAINER" 2>&1 | grep -E 'Traceback|\[ERROR\]'
 }
 
 # An empty collectd load database, which CGP should then list and graph
 creates_rrd() {
-    in_container sh -c "mkdir -p $RRD_DIR && rrdtool create $RRD_DIR/load.rrd --step 10 \
-        DS:shortterm:GAUGE:20:0:U DS:midterm:GAUGE:20:0:U DS:longterm:GAUGE:20:0:U RRA:AVERAGE:0.5:1:100"
+    as_root sh -c "mkdir -p $RRD_DIR && rrdtool create $RRD_DIR/load.rrd --step 10 \
+        DS:shortterm:GAUGE:20:0:U DS:midterm:GAUGE:20:0:U DS:longterm:GAUGE:20:0:U RRA:AVERAGE:0.5:1:100 \
+        RRA:MIN:0.5:1:100 RRA:MAX:0.5:1:100"
 }
 
 lists_collectd_host() {
     local page
     page=$(in_container curl -fsS http://localhost/) || return 1
-    grep -q 'testhost' <<<"$page"
+    grep -q 'href="/host/testhost"' <<<"$page"
+}
+
+lists_host_graphs() {
+    local page
+    page=$(in_container curl -fsS http://localhost/host/testhost) || return 1
+    grep -q 'System load on testhost' <<<"$page"
+}
+
+unknown_host_is_404() {
+    local code
+    code=$(in_container curl -s -o /dev/null -w '%{http_code}' http://localhost/host/nosuchhost) || return 1
+    [ "$code" = 404 ] || { echo "HTTP $code"; return 1; }
 }
 
 draws_graph() {
     local type
     type=$(in_container curl -fsS -o /dev/null -w '%{content_type}' \
-        'http://localhost/graph.php?h=testhost&p=load&t=load') || return 1
+        'http://localhost/graph.png?h=testhost&p=load&t=load') || return 1
     [ "$type" = "image/png" ] || { echo "Content type: $type"; return 1; }
 }
 
+serves_chart_data() {
+    local json
+    json=$(in_container curl -fsS 'http://localhost/api/graph?h=testhost&p=load&t=load&s=3600&w=400') || return 1
+    in_container python -c 'import json, sys
+c = json.loads(sys.argv[1])
+assert c["title"] == "System load on testhost", c["title"]
+assert [s["label"].strip() for s in c["series"]] == ["1 min", "5 min", "15 min"], c["series"]
+assert len(c["timestamps"]) == len(c["series"][0]["values"]) > 0' "$json"
+}
+
 # rrdtool warns about fontconfig on every graph when the font cache is stale
-# and www-data can't write a new one
+# and CGP's user can't write a new one
 no_fontconfig_errors() {
-    in_container su -s /bin/sh www-data -c \
-        "rrdtool graph /tmp/fontconfig.png DEF:a=$RRD_DIR/load.rrd:shortterm:AVERAGE LINE1:a#ff0000 2>&1 >/dev/null" \
+    in_container rrdtool graph /tmp/fontconfig.png DEF:a=$RRD_DIR/load.rrd:shortterm:AVERAGE LINE1:a#ff0000 2>&1 >/dev/null \
         | { ! grep -i fontconfig; }
 }
 
@@ -95,17 +126,22 @@ no_fontconfig_errors() {
 # types.db rather than falling back to 'value'
 draws_disk_io_time_graph() {
     local dir=/var/lib/collectd/rrd/testhost/disk-sda type
-    in_container sh -c "mkdir -p $dir && rrdtool create $dir/disk_io_time.rrd --step 10 \
-        DS:io_time:DERIVE:20:0:U DS:weighted_io_time:DERIVE:20:0:U RRA:AVERAGE:0.5:1:100" || return 1
+    as_root sh -c "mkdir -p $dir && rrdtool create $dir/disk_io_time.rrd --step 10 \
+        DS:io_time:DERIVE:20:0:U DS:weighted_io_time:DERIVE:20:0:U \
+        RRA:AVERAGE:0.5:1:100 RRA:MIN:0.5:1:100 RRA:MAX:0.5:1:100" || return 1
     type=$(in_container curl -fsS -o /dev/null -w '%{content_type}' \
-        'http://localhost/graph.php?h=testhost&p=disk&pi=sda&t=disk_io_time') || return 1
+        'http://localhost/graph.png?h=testhost&p=disk&pi=sda&t=disk_io_time') || return 1
     [ "$type" = "image/png" ] || { echo "Content type: $type"; return 1; }
-    ! docker logs "$CONTAINER" 2>&1 | grep 'CGP: rrdtool exited'
+    in_container curl -fsS -o /dev/null 'http://localhost/api/graph?h=testhost&p=disk&pi=sda&t=disk_io_time' || return 1
+    ! docker logs "$CONTAINER" 2>&1 | grep 'CGP: '
 }
 
-# The publish workflow compares it with CGP's latest commit
-records_cgp_revision() {
-    in_container cat /usr/src/CGP.revision | grep -xE '[0-9a-f]{40}'
+# The image's HEALTHCHECK, run now rather than waiting a minute for Docker
+healthcheck_passes() {
+    local cmd
+    cmd=$(docker inspect --format '{{if .Config.Healthcheck}}{{index .Config.Healthcheck.Test 1}}{{end}}' "$IMAGE")
+    [ -n "$cmd" ] || { echo "No HEALTHCHECK"; return 1; }
+    in_container sh -c "$cmd"
 }
 
 # Fails when Debian's repositories can't be reached, as well as when
@@ -121,13 +157,17 @@ packages_up_to_date() {
 echo "Testing '$IMAGE' ..."
 check "container starts" starts
 check "serves the CGP index" serves_index
-check "index has no PHP errors" no_php_errors
+check "runs as an unprivileged user" runs_unprivileged
 check "rrdtool creates a collectd database" creates_rrd
 check "lists a host from collectd data" lists_collectd_host
+check "lists a host's graphs" lists_host_graphs
+check "answers 404 for an unknown host" unknown_host_is_404
 check "draws a graph from collectd data" draws_graph
+check "serves chart data from collectd data" serves_chart_data
 check "rrdtool has no fontconfig errors" no_fontconfig_errors
 check "draws a disk_io_time graph" draws_disk_io_time_graph
-check "records the CGP revision" records_cgp_revision
+check "health check command works" healthcheck_passes
+check "logs no application errors" no_app_errors
 check "Debian packages are up to date" packages_up_to_date
 
 exit $FAILED
